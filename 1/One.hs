@@ -10,5 +10,3 @@ crunch =
   lines
 
 main = print =<< fmap crunch (readFile "input")
-
-

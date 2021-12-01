@@ -18,5 +18,3 @@ crunch1B =
   lines
 
 main = fmap (crunch1A . crunch2 . crunch1B) (readFile "input") >>= print
-
-
