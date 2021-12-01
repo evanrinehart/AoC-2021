@@ -9,4 +9,4 @@ crunch =
   take 2000 .
   lines
 
-main = print =<< fmap crunch (readFile "input")
+main = fmap crunch (readFile "input") >>= print
