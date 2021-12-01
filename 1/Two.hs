@@ -17,4 +17,7 @@ crunch1B =
   take 2000 .
   lines
 
-main = fmap (crunch1A . crunch2 . crunch1B) (readFile "input") >>= print
+main =
+  print =<<
+  pure . crunch1A . crunch2 . crunch1B =<<
+  readFile "input"
