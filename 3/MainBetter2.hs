@@ -3,7 +3,7 @@ module Main where
 main = do
   words <- fmap lines (readFile "input")
 
-  -- look at first columns to get initial partition
+  -- look at first column to get initial partition
   let firstPart = part 0 words
 
   -- drill the two parts starting at 2nd column
