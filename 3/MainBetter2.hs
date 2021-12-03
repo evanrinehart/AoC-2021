@@ -4,7 +4,7 @@ main = do
   words <- fmap lines (readFile "input")
 
   -- look at first columns to get initial partition
-  let firstPart = part 0 words -- words is used up now
+  let firstPart = part 0 words
 
   -- drill the two parts starting at 2nd column
   let o2  = drill oxygenDecide 1 (oxygenDecide firstPart)
