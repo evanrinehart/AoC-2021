@@ -20,8 +20,8 @@ part :: Int -> [String] -> Partition
 part i ws = partWorker [] [] 0 0 i ws where
   partWorker zwords owords z o i [] = (z,zwords,o,owords)
   partWorker zwords owords z o i (w:ws) = case w !! i of
-    '0' -> partWorker zwords (w:owords) (z+1) o i ws
-    '1' -> partWorker (w:zwords) owords z (o+1) i ws
+    '0' -> partWorker (w:zwords) owords (z+1) o i ws
+    '1' -> partWorker zwords (w:owords) z (o+1) i ws
 
 -- keep picking partition winners until 1 word left
 drill :: (Partition -> [String]) -> Int -> [String] -> Int
