@@ -39,10 +39,6 @@ search2 boards (n:ns) =
         then error "multiple last winners!"
         else search2 (dropWinners boards') ns
 
-transpose :: Grid a -> Grid a
-transpose rows = V.zipWith5 f (rows!0) (rows!1) (rows!2) (rows!3) (rows!4) where
-  f a b c d e = V.fromList [a,b,c,d,e]
-
 parseBoard :: [String] -> Board
 parseBoard [a,b,c,d,e] = Board (makeIndex rows) rows cols where
   rows = V.fromList [f a, f b, f c, f d, f e]
@@ -53,9 +49,6 @@ makeIndex :: Grid Int -> IntMap (Int,Int)
 makeIndex rows = IntMap.fromList $ concat $ zipWith f (V.toList rows) [0..4] where
   f row j = zipWith g (V.toList row) [0..4] where
     g n i = (n, (j,i))
-
-modV :: Int -> (a -> a) -> Vector a -> Vector a
-modV i f v = let x = v ! i in v // [(i,f x)]
 
 mark :: Int -> Int -> Board -> Board
 mark j i (Board ix rows cols) = Board ix rows' cols' where
@@ -91,8 +84,9 @@ split s = go where
 splits :: Eq a => a -> [a] -> [[a]]
 splits sep = filter (not . null) . split sep
 
-modAt :: Int -> (a -> a) -> [a] -> [a]
-modAt 0 f (x:xs) = f x : xs
-modAt i f (x:xs) = x : modAt (i - 1) f xs
+modV :: Int -> (a -> a) -> Vector a -> Vector a
+modV i f v = let x = v ! i in v // [(i,f x)]
 
-
+transpose :: Grid a -> Grid a
+transpose rows = V.zipWith5 f (rows!0) (rows!1) (rows!2) (rows!3) (rows!4) where
+  f a b c d e = V.fromList [a,b,c,d,e]
