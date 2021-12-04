@@ -60,9 +60,8 @@ isWinning (Board _ rows cols) = any (all (> 100)) rows || any (all (> 100)) cols
 unmarked :: Board -> [Int]
 unmarked (Board _ rows _) = concat (map (filter (< 100)) rows)
 
-deleteAt :: Int -> [a] -> [a]
-deleteAt 0 (x:xs) = xs
-deleteAt i (x:xs) = x : deleteAt (i - 1) xs
+dropWinners :: [Board] -> [Board]
+dropWinners = filter (not . isWinning)
 
 search1 :: [Board] -> [Int] -> Int
 search1 boards (n:ns) =
@@ -79,14 +78,14 @@ search2 boards (n:ns) =
   let winners = filter (isWinning . fst) (zip boards' [0..]) in
   case winners of
     []  -> search2 boards' ns
-    [(b,i)] -> if length boards == 1
-                  then sum (unmarked b) * n
-                  else search2 (deleteAt i boards') ns
-    tie -> if length boards == length tie
-              then error "multiple last winners!"
-              else let boards'' = filter (not . isWinning) boards' in
-                    search2 boards'' ns
-
+    [(b,i)] ->
+      if length boards == 1
+        then sum (unmarked b) * n
+        else search2 (dropWinners boards') ns
+    tie ->
+      if length boards == length tie
+        then error "multiple last winners!"
+        else search2 (dropWinners boards') ns
 
 main = do
   (l0:_:rest) <- fmap lines (readFile "input")
