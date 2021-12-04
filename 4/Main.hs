@@ -1,16 +1,7 @@
 module Main where
 
-import Data.List
-import Data.IntMap as IntMap hiding (map, filter, foldl)
-
-import Debug.Trace 
-
-fromBinary :: String -> Int
-fromBinary = go . reverse . dropWhile (=='0') where
-  go [] = 0
-  go ('1':[])   = 1
-  go ('0':bits) = go bits * 2
-  go ('1':bits) = go bits * 2 + 1
+import Data.List (transpose)
+import Data.IntMap as IntMap (IntMap, fromList, lookup)
 
 splitByComma :: String -> [String]
 splitByComma [] = []
@@ -73,19 +64,29 @@ deleteAt :: Int -> [a] -> [a]
 deleteAt 0 (x:xs) = xs
 deleteAt i (x:xs) = x : deleteAt (i - 1) xs
 
-search :: [Board] -> [Int] -> Int
-search boards (n:ns) =
+search1 :: [Board] -> [Int] -> Int
+search1 boards (n:ns) =
   let boards' = map (markNum n) boards in
   let winners = filter (isWinning . fst) (zip boards' [0..]) in
-  case trace (show (length boards, length winners)) winners of
-    []  -> search boards' ns
+  case winners of
+    []  -> search1 boards' ns
+    [(b,i)] -> sum (unmarked b) * n
+    tie -> error "multiple winners!"
+
+search2 :: [Board] -> [Int] -> Int
+search2 boards (n:ns) =
+  let boards' = map (markNum n) boards in
+  let winners = filter (isWinning . fst) (zip boards' [0..]) in
+  case winners of
+    []  -> search2 boards' ns
     [(b,i)] -> if length boards == 1
-                  then trace (show (unmarked b)) $ sum (unmarked b) * n
-                  else search (deleteAt i boards') ns
+                  then sum (unmarked b) * n
+                  else search2 (deleteAt i boards') ns
     tie -> if length boards == length tie
               then error "multiple last winners!"
               else let boards'' = filter (not . isWinning) boards' in
-                    search boards'' ns
+                    search2 boards'' ns
+
 
 main = do
   (l0:_:rest) <- fmap lines (readFile "input")
@@ -94,4 +95,5 @@ main = do
   let boardsRaw = splitByBlank rest
   let boards = map parseBoard boardsRaw
 
-  print (search boards ns)
+  print (search1 boards ns)
+  print (search2 boards ns)
