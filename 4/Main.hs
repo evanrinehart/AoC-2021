@@ -66,19 +66,19 @@ dropWinners = filter (not . isWinning)
 search1 :: [Board] -> [Int] -> Int
 search1 boards (n:ns) =
   let boards' = map (markNum n) boards in
-  let winners = filter (isWinning . fst) (zip boards' [0..]) in
+  let winners = filter isWinning boards' in
   case winners of
     []  -> search1 boards' ns
-    [(b,i)] -> sum (unmarked b) * n
+    [b] -> sum (unmarked b) * n
     tie -> error "multiple winners!"
 
 search2 :: [Board] -> [Int] -> Int
 search2 boards (n:ns) =
   let boards' = map (markNum n) boards in
-  let winners = filter (isWinning . fst) (zip boards' [0..]) in
+  let winners = filter isWinning boards' in
   case winners of
     []  -> search2 boards' ns
-    [(b,i)] ->
+    [b] ->
       if length boards == 1
         then sum (unmarked b) * n
         else search2 (dropWinners boards') ns
