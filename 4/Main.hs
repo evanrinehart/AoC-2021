@@ -3,34 +3,21 @@ module Main where
 import Data.List (transpose)
 import Data.IntMap as IntMap (IntMap, fromList, lookup)
 
-splitByComma :: String -> [String]
-splitByComma [] = []
-splitByComma ss = thing : splitByComma rest where
-  thing = takeWhile (/=',') ss
-  rest = drop 1 (dropWhile (/=',') ss)
-
-splitByBlank :: [String] -> [[String]]
-splitByBlank [] = []
-splitByBlank lines = thing : splitByBlank rest where
-  thing = takeWhile (/="") lines
-  rest = drop 1 (dropWhile (/="") lines)
-
-skipSpaces = dropWhile (==' ')
-
-splitBySpaces :: String -> [String]
-splitBySpaces [] = []
-splitBySpaces ss = thing : splitBySpaces rest where
-  thing = takeWhile (/=' ') (skipSpaces ss)
-  rest = skipSpaces (dropWhile (/=' ') (skipSpaces ss))
-
 data Board = Board (IntMap (Int,Int)) [[Int]] [[Int]]
-  deriving Show
+
+splitBys :: Eq a => a -> [a] -> [[a]]
+splitBys sep xs = go (skipSeps xs) where
+  skipSeps = dropWhile (==sep)
+  skipItems = dropWhile (/=sep)
+  grab = takeWhile (/=sep)
+  go [] = []
+  go xs = (grab xs) : go (skipSeps (skipItems xs))
 
 parseBoard :: [String] -> Board
 parseBoard [a,b,c,d,e] = Board (makeIndex rows) rows cols where
   rows = [f a, f b, f c, f d, f e]
   cols = transpose rows
-  f = map read . splitBySpaces
+  f = map read . splitBys ' '
 
 makeIndex :: [[Int]] -> IntMap (Int,Int)
 makeIndex rows = IntMap.fromList $ concat $ zipWith f rows [0..4] where
@@ -90,8 +77,8 @@ search2 boards (n:ns) =
 main = do
   (l0:_:rest) <- fmap lines (readFile "input")
 
-  let ns = map read (splitByComma l0) :: [Int]
-  let boardsRaw = splitByBlank rest
+  let ns = map read (splitBys ',' l0) :: [Int]
+  let boardsRaw = splitBys "" rest
   let boards = map parseBoard boardsRaw
 
   print (search1 boards ns)
