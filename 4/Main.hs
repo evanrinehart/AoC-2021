@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 module Main where
 
 import Data.List (transpose)
