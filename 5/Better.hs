@@ -1,6 +1,6 @@
 #!cabal
 {- cabal:
-build-depends: base, vector, vector-algorithms
+build-depends: base, vector, vector-algorithms, clock
 -}
 {-# LANGUAGE TupleSections #-}
 module Main where
@@ -10,7 +10,10 @@ import Data.List (group)
 
 import Data.Vector.Storable as V (thaw, freeze, fromList, toList)
 import Data.Vector.Storable.Mutable as V (IOVector)
-import Data.Vector.Algorithms.AmericanFlag as V (sort)
+import Data.Vector.Algorithms.Radix as V (sort)
+
+import System.Clock (getTime, diffTimeSpec, toNanoSecs, Clock(..))
+import Control.Exception
 
 parseNum :: String -> (Int,String)
 parseNum xs =
@@ -48,8 +51,13 @@ encodeLine :: Line -> [Int]
 encodeLine l = map encode (points l)
 
 main = do
+  t0 <- getTime Monotonic
   v0 <- fmap (V.fromList . concatMap encodeLine . map parseLine . lines) (readFile "input")
   v1 <- V.thaw v0 :: IO (IOVector Int)
   V.sort v1 
   v2 <- V.freeze v1
-  print $ (length . filter (\xs -> length xs > 1) . group . V.toList) v2
+  let answer = (length . filter (\xs -> length xs > 1) . group . V.toList) v2
+  evaluate answer
+  t1 <- getTime Monotonic
+  print answer
+  print (toNanoSecs (diffTimeSpec t1 t0) `divMod` 1000000)
