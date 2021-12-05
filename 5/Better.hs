@@ -8,7 +8,7 @@ module Main where
 import Data.Char
 import Data.List (group)
 
-import Data.Vector.Storable as V (thaw, freeze, fromListN, toList)
+import Data.Vector.Storable as V (thaw, freeze, fromList, toList)
 import Data.Vector.Storable.Mutable as V (IOVector)
 import Data.Vector.Algorithms.AmericanFlag as V (sort)
 
@@ -48,8 +48,8 @@ encodeLine :: Line -> [Int]
 encodeLine l = map encode (points l)
 
 main = do
-  everything <- fmap (concatMap encodeLine . map parseLine . lines) (readFile "input")
-  v1 <- V.thaw (V.fromListN 1000000 everything) :: IO (IOVector Int)
+  v0 <- fmap (V.fromList . concatMap encodeLine . map parseLine . lines) (readFile "input")
+  v1 <- V.thaw v0 :: IO (IOVector Int)
   V.sort v1 
   v2 <- V.freeze v1
   print $ (length . filter (\xs -> length xs > 1) . group . V.toList) v2
