@@ -42,7 +42,7 @@ drawLine l@(L a b c d) paper | a==c = drawV a b d paper
 
 range :: Int -> Int -> [Int]
 range a b | a < b = [a..b]
-          | b < a = [b..a]
+          | b < a = [a,a-1..b]
           | otherwise = [a]
 
 straight (L a b c d) = a==c || b==d
