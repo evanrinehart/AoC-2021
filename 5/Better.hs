@@ -6,8 +6,7 @@ build-depends: base, vector, vector-algorithms
 module Main where
 
 import Data.Char
-import Data.Foldable
-import Data.List (sort, group)
+import Data.List (group)
 
 import Data.Vector.Storable as V (thaw, freeze, fromListN, toList)
 import Data.Vector.Storable.Mutable as V (IOVector)
