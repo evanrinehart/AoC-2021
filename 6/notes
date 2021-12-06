@@ -1,1 +1,2 @@
 gcc -O2 -o crunch crunch.c
+gcc -O2 -funroll-loops -o crunch fasterer.c
