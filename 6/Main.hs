@@ -1,17 +1,11 @@
 module Main where
 
-import Data.List (sort, group)
-import qualified Data.IntMap as IM
-
--- split ' ' " hello  world " = ["","hello","","world",""]
-split :: Eq a => a -> [a] -> [[a]]
-split s = go where
-  go xs = case break (==s) xs of
-    (chunk,[])   -> [chunk]
-    (chunk,more) -> chunk : go (dropOnly s more)
-  dropOnly s y@(x:xs) = if x == s then xs else y
-
 type Table = [(Int,Int)]
+
+main = do
+  ns <- fmap (load . map read . split ',') (readFile "input")
+  print (count (iterate day ns !! 80))
+  print (count (iterate day ns !! 256))
 
 day :: Table -> Table
 day t =
@@ -38,8 +32,11 @@ load :: [Int] -> Table
 load [] = blank
 load (n:ns) = modAt n (\(foo,bar) -> (foo,bar+1)) (load ns)
 
-main = do
-  ns <- fmap (load . map read . split ',') (readFile "input")
-  print (count (iterate day ns !! 80))
-  print (count (iterate day ns !! 256))
+-- split ' ' " hello  world " = ["","hello","","world",""]
+split :: Eq a => a -> [a] -> [[a]]
+split s = go where
+  go xs = case break (==s) xs of
+    (chunk,[])   -> [chunk]
+    (chunk,more) -> chunk : go (dropOnly s more)
+  dropOnly s y@(x:xs) = if x == s then xs else y
 
