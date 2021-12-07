@@ -1,14 +1,13 @@
 module Main where
 
-import Data.Ord
 import Data.List
 
 main = do
   ns <- getData
-  let costs1 = map (\i -> (i, cost1 i ns)) [0..1850]
-  let costs2 = map (\i -> (i, cost2 i ns)) [0..1850]
-  print (snd $ minimumBy (comparing snd) costs1)
-  print (snd $ minimumBy (comparing snd) costs2)
+  let costs1 = map (\i -> cost1 i ns) [0..1850]
+  let costs2 = map (\i -> cost2 i ns) [0..1850]
+  print (minimum costs1)
+  print (minimum costs2)
 
 cost1 :: Int -> [Int] -> Int
 cost1 target ns = sum (map f ns) where
