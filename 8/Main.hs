@@ -11,7 +11,6 @@ import Data.Set as S (Set,toList,fromList,delete)
 main = do
   d <- getData
   print $ sum $ map (\(ss,my) -> solveLine ss my) d
-  return ()
 
 
 solveLine pats mystery =
@@ -98,13 +97,6 @@ definitely c1 c2 tab = mapTable f tab where
   f c xs | c == c2   = filter (==c1) xs
          | otherwise = filter (/=c1) xs
 
-isSolved :: Table -> Bool
-isSolved tab = all singular (map snd tab)
-
-singular :: [a] -> Bool
-singular []  = False
-singular [x] = True
-singular _   = False
 
 applyTable :: Table -> Char -> [Char]
 applyTable tab c = case lookup c tab of
@@ -122,62 +114,13 @@ possibleMappingsTo :: Char -> String -> Table -> [Char]
 possibleMappingsTo c str tab =
   applyTable tab c `intersect` str
 
--- if a 5ino (which must contain g) has g in one possible place
--- then you know what maps to g, else you know nothing new
---   (if nothing could map to g, 
-learn5g :: String -> Table -> Table
-learn5g five tab = case possibleMappingsTo 'g' five tab of
-  [c] -> definitely c 'g' tab
-  _   -> tab
-
-learn5d :: String -> Table -> Table
-learn5d five tab = case possibleMappingsTo 'd' five tab of
-  [c] -> definitely c 'd' tab
-  _   -> tab
-
-learn5a :: String -> Table -> Table
-learn5a five tab = case possibleMappingsTo 'a' five tab of
-  [c] -> definitely c 'a' tab
-  _   -> tab
-
-learn6a :: String -> Table -> Table
-learn6a six tab = case possibleMappingsTo 'a' six tab of
-  [c] -> definitely c 'a' tab
-  _   -> tab
-
-learn6b :: String -> Table -> Table
-learn6b six tab = case possibleMappingsTo 'b' six tab of
-  [c] -> definitely c 'b' tab
-  _   -> tab
-
-learn6f :: String -> Table -> Table
-learn6f six tab = case possibleMappingsTo 'f' six tab of
-  [c] -> definitely c 'f' tab
-  _   -> tab
-
-learn6g :: String -> Table -> Table
-learn6g six tab = case possibleMappingsTo 'g' six tab of
-  [c] -> definitely c 'g' tab
-  _   -> tab
 
 
-learn5e :: String -> Table -> Table
-learn5e five tab = case possibleMappingsTo 'e' five tab of
-  [c] -> definitely c 'e' tab
-
-
-
--- for any word, if there is only 1 place c could appear in the mapping
--- then that is where it appears and 1 mapping is definitely known
 
 rule1 :: Char -> String -> Table -> Table
 rule1 c str rtab = case possibleMappingsTo c str rtab of
   [d] -> definitely d c rtab
   _   -> rtab
-
-
-think c ss rtab = foldl (flip ($)) rtab (map (rule1 c) ss)
-thonk ss rtab = foldl (flip ($)) rtab (map (\d -> think d ss) "abcdefg")
 
 tka = rule1 'a'
 tkb = rule1 'b'
