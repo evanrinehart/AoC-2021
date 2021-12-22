@@ -101,10 +101,8 @@ getData = do
   return (Space x1, Space x2)
 
 split :: Eq a => a -> [a] -> [[a]]
-split s = go where
-  go xs = case break (==s) xs of
-    (chunk,[])   -> [chunk]
-    (chunk,more) -> chunk : go (dropOnly s more)
-  dropOnly s y@(x:xs) = if x == s then xs else y
+split delim input = case break (== delim) input of
+  (chunk,[])       -> [chunk]
+  (chunk,(_:more)) -> chunk : split delim more
 
 
