@@ -1,482 +1,389 @@
-{-# LANGUAGE LambdaCase #-}
+#!cabal
+{- cabal:
+build-depends: base, vector, containers, mtl
+-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
 module Main where
 
+import qualified Data.Vector as V
+import Data.Vector (Vector, (!), (//))
 import Data.List
-import Data.Char
-import Data.Ord
 import Data.Maybe
-import Data.Monoid
-import Control.Monad
-import Control.Concurrent
-import qualified Data.Map.Strict as M; import Data.Map.Strict (Map, (!))
-import qualified Data.IntMap as IM; import Data.IntMap (IntMap)
-import qualified Data.Set as S hiding (split); import Data.Set (Set)
+import qualified Data.Map as M
+import Data.Map (Map)
+import Data.Foldable
+import Control.Applicative
+import Control.Monad.State
 import Debug.Trace
 
-data Slot = O | A | B | C | D deriving (Eq,Ord,Show)
-data Room = R Slot Slot deriving (Eq,Ord,Show)
-data Layout = L Slot Slot Room Slot Room Slot Room Slot Room Slot Slot deriving (Eq,Ord)
-
-instance Show Layout where
-  show = unlines . renderLayout
-
-cost A = 1
-cost B = 10
-cost C = 100
-cost D = 1000
-
--- 01 2 3 4 56
---   0 2 4 6
---   1 3 5 7
-
-win = L O O (R A A) O (R B B) O (R C C) O (R D D) O O
-ex  = L O O (R B A) O (R C D) O (R B C) O (R D A) O O
-pzl = L O O (R A D) O (R C D) O (R B B) O (R A C) O O
-
-data S = S Int Int Int Int deriving Show
-
--- an illegal set of moves that gives a lower bound on solutions
-lowerBoundMoves = 
-  [S 8 1 2 2
-  ,S 8 2 6 2
-  ,S 6 1 4 2
-  ,S 6 2 4 1
-  ,S 4 1 6 1
-  ,S 4 2 8 2
-  ,S 2 2 8 1]
-
--- lower bound
--- [9,50,50,400,800,8000,9000]
-wth = 9 + 800 + 50 + 50 + 400 + 8000 + 9000
-
--- ^ is greater than... this V
-
--- manual solution
--- [2,3,3,9,30,40,50,60,500,500,8000,9000]
-what = 9 + 60 + 50 + 500 + 500 + 8000 + 30 + 40 + 2 + 9000 + 3 + 3
-
--- [9,50,50,400,800,8000,9000]
--- [2,3,3,9,30,40,50,60,500,500,8000,9000]
-
--- [9,50,50,400,800]
--- [2,3,3,9,30,40,50,60,500,500]
-
--- 9 
--- 9 60 50 500 
-
-
-lowerBound :: Int -- 18109
-lowerBound = sum (map f lowerBoundMoves) where
-  st = makeSpaceTable
-  f move = moveCost st pzl move
-
-vizMove :: S -> IO ()
-vizMove s = do
-  print pzl
-  print (applyMove s pzl)
-  print (moveCost makeSpaceTable pzl s)
-
-solution =
-  [S 6 1 1 0
-  ,S 6 2 3 0
-  ,S 4 1 6 2
-  ,S 8 1 9 0
-  ,S 8 2 6 1
-  ,S 4 2 8 2
-  ,S 3 0 4 2
-  ,S 1 0 4 1
-  ,S 2 1 1 0
-  ,S 2 2 8 1
-  ,S 1 0 2 2
-  ,S 9 0 2 1
-  ]
-
-oldSolution = -- 18197
-  [S 8 1 0 0
-  ,S 6 1 1 0
-  ,S 6 2 3 0
-  ,S 4 1 6 2
-  ,S 8 2 6 1
-  ,S 4 2 8 2
-  ,S 3 0 4 2
-  ,S 1 0 4 1
-  ,S 2 1 1 0
-  ,S 2 2 8 1
-  ,S 1 0 2 2
-  ,S 0 0 2 1
-  ]
-
-moveCost :: SpaceTable -> Layout -> S -> Int
-moveCost st l (S a b c d) =
-  let dist = st ! (I2 a b, I2 c d)
-  in dist * cost (layoutLook (I2 a b) l)
-
-totalCost :: SpaceTable -> Layout -> [S] -> Int
-totalCost st l [] = 0
-totalCost st l (s:ss) = moveCost st l s + totalCost st (applyMove s l) ss
-
-tally :: [S] -> IO ()
-tally sol = do
-  let st = makeSpaceTable
-  start <- getData
-  let steps = scanl (\(_,l) s -> (moveCost st l s, applyMove s l)) (0,start) sol
-  forM_ steps $ \(cost,l) -> do
-    print l
-    print cost
-    getLine
-  let total = sum (map fst steps)
-  putStrLn ("total cost: " ++ show total)
-
-applyMove :: S -> Layout -> Layout
-applyMove (S a b c d) l = moveXtoY (I2 a b) (I2 c d) l
-
-replay :: [S] -> Layout -> [Layout]
-replay [] l = [l]
-replay ((S a b c d):ms) l = l : replay ms (moveXtoY (I2 a b) (I2 c d) l)
-
-
-
-readSlot '.' = O
-readSlot 'A' = A
-readSlot 'B' = B
-readSlot 'C' = C
-readSlot 'D' = D
-
-renderLayout :: Layout -> [String]
-renderLayout (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  let h O = '.'; h A = 'A'; h B = 'B'; h C = 'C'; h D = 'D' in
-  ["#############"
-  ,['#',h a, h b, '.', h c, '.', h d, '.', h e, '.', h f, h g, '#']
-  ,"###" ++ [h r0] ++ "#" ++ [h r2] ++ "#" ++ [h r4] ++ "#" ++ [h r6] ++ "###"
-  ,"  #" ++ [h r1] ++ "#" ++ [h r3] ++ "#" ++ [h r5] ++ "#" ++ [h r7] ++ "#"
-  ,"  #########"]
-
-parseLayout :: [String] -> Layout
-parseLayout
-  ["#############"
-  ,['#',a,b,'.',c,'.',d,'.',e,'.',f,g,'#']
-  ,['#','#','#',r0,'#',r2,'#',r4,'#',r6,'#','#','#']
-  ,[' ',' ','#',r1,'#',r3,'#',r5,'#',r7,'#']
-  ,"  #########"] =
-      let h = readSlot
-      in L (h a) (h b)
-           (R (h r0) (h r1)) (h c) (R (h r2) (h r3)) (h d)
-           (R (h r4) (h r5)) (h e) (R (h r6) (h r7)) (h f) (h g)
-
-pplayout :: Layout -> IO ()
-pplayout = putStrLn . unlines . renderLayout
-
-solve :: Layout -> Int
-solve l = error "?"
-
-main = do
-  start <- getData
-  
-  let st = makeSpaceTable
-  let cameFrom = M.empty
-  let gScore = M.singleton start 0
-  let fScore = M.singleton start (theHFunction st start)
-  let openSet = S.singleton start
-
-  let path = go st openSet cameFrom gScore fScore
-
-  mapM_ print path
-
-
-getData = do
-  ls <- fmap lines (readFile "input")
-  return (parseLayout ls)
-
-split :: Eq a => a -> [a] -> [[a]]
-split delim input = case break (== delim) input of
-  (chunk,[])       -> [chunk]
-  (chunk,(_:more)) -> chunk : split delim more
-
-pairs :: [a] -> [(a,a)]
-pairs zs = [(x,y) | x:xs <- tails zs, y <- xs]
-
-
--- layout functions
-
-sToX 0 = 0
-sToX 1 = 1
-sToX 2 = 3
-sToX 3 = 5
-sToX 4 = 7
-sToX 5 = 9
-sToX 6 = 10
-sToX 10 = 2
-sToX 11 = 2
-sToX 12 = 4
-sToX 13 = 4
-sToX 14 = 6
-sToX 15 = 6
-sToX 16 = 8
-sToX 17 = 8
-
-sToY 0 = 0
-sToY 1 = 0
-sToY 2 = 0
-sToY 3 = 0
-sToY 4 = 0
-sToY 5 = 0
-sToY 6 = 0
-sToY 10 = 1
-sToY 11 = 2
-sToY 12 = 1
-sToY 13 = 2
-sToY 14 = 1
-sToY 15 = 2
-sToY 16 = 1
-sToY 17 = 2
-
--- 01 2 3 4 56
---   0 2 4 6
---   1 3 5 7
-
+data Piece = PA | PB | PC | PD deriving (Eq,Show)
+data Square = O | A | B | C | D deriving (Eq)
+data Quad a = Q a a a a deriving (Show,Functor)
+data HouseF a = H (Vector a) (Quad (Quad a)) deriving (Functor)
+type House = HouseF Square
+type Hall = Vector Square
 data I2 = I2 Int Int deriving (Eq,Ord,Show)
-neighborSpaces :: I2 -> [I2]
-neighborSpaces (I2 0 0) = [I2 1 0]
-neighborSpaces (I2 1 0) = [I2 0 0, I2 2 0]
-neighborSpaces (I2 2 0) = [I2 1 0, I2 3 0, I2 2 1] 
-neighborSpaces (I2 3 0) = [I2 2 0, I2 4 0]
-neighborSpaces (I2 4 0) = [I2 3 0, I2 5 0, I2 4 1]
-neighborSpaces (I2 5 0) = [I2 4 0, I2 6 0]
-neighborSpaces (I2 6 0) = [I2 5 0, I2 7 0, I2 6 1]
-neighborSpaces (I2 7 0) = [I2 6 0, I2 8 0]
-neighborSpaces (I2 8 0) = [I2 7 0, I2 9 0, I2 8 1]
-neighborSpaces (I2 9 0) = [I2 8 0, I2 10 0]
-neighborSpaces (I2 10 0) = [I2 9 0]
-neighborSpaces (I2 2 1) = [I2 2 0, I2 2 2]
-neighborSpaces (I2 4 1) = [I2 4 0, I2 4 2]
-neighborSpaces (I2 6 1) = [I2 6 0, I2 6 2]
-neighborSpaces (I2 8 1) = [I2 8 0, I2 8 2]
-neighborSpaces (I2 2 2) = [I2 2 1]
-neighborSpaces (I2 4 2) = [I2 4 1]
-neighborSpaces (I2 6 2) = [I2 6 1]
-neighborSpaces (I2 8 2) = [I2 8 1]
 
-allSpaces =
-  [I2 0 0, I2 1 0, I2 2 0, I2 3 0
-  ,I2 4 0, I2 5 0, I2 6 0, I2 7 0
-  ,I2 8 0, I2 9 0, I2 10 0
-  ,I2 2 1, I2 2 2, I2 4 1, I2 4 2
-  ,I2 6 1, I2 6 2, I2 8 1, I2 8 2]
+modVector :: Int -> (a -> a) -> Vector a -> Vector a
+modVector i f v = v // [(i, f (v ! i))]
 
-isForbidden (I2 2 0) = True
-isForbidden (I2 4 0) = True
-isForbidden (I2 6 0) = True
-isForbidden (I2 8 0) = True
-isForbidden _ = False
+{-
+#############
+#...........#
+###A#C#B#A###
+  #D#C#B#A#
+  #D#B#A#C#
+  #D#D#B#C#
+  #########
+-}
 
-spaceMapFrom :: I2 -> [(I2,Int)]
-spaceMapFrom start = (start,0) : concatMap (go 1 start) (neighborSpaces start) where
-  go d prev here = (here,d) : concatMap (go (d+1) here) (delete prev (neighborSpaces here))
+pzl =
+  H (parseHall "...........")
+    (Q (Q A C B A)
+       (Q D C B A)
+       (Q D B A C)
+       (Q D D B C))
 
-unblocked start layout = concatMap (comeFrom start) (neighborSpaces start) where
-  comeFrom prev here = if isForbidden here
-    then concatMap (comeFrom here) (delete prev (neighborSpaces here))
-    else case layoutLook here layout of
-      O -> here : concatMap (comeFrom here) (delete prev (neighborSpaces here))
-      _ -> []
+parseSquare '.' = O
+parseSquare 'A' = A
+parseSquare 'B' = B
+parseSquare 'C' = C
+parseSquare 'D' = D
 
-validDest :: I2 -> Slot -> Bool
-validDest (I2 2 1) p = case p of A -> True; _ -> False
-validDest (I2 2 2) p = case p of A -> True; _ -> False
-validDest (I2 4 1) p = case p of B -> True; _ -> False
-validDest (I2 4 2) p = case p of B -> True; _ -> False
-validDest (I2 6 1) p = case p of C -> True; _ -> False
-validDest (I2 6 2) p = case p of C -> True; _ -> False
-validDest (I2 8 1) p = case p of D -> True; _ -> False
-validDest (I2 8 2) p = case p of D -> True; _ -> False
-validDest _ _ = True
+instance Show Square where
+  show O = "."
+  show A = "A"
+  show B = "B"
+  show C = "C"
+  show D = "D"
 
-type SpaceTable = Map (I2,I2) Int
-makeSpaceTable :: Map (I2,I2) Int
-makeSpaceTable = M.fromList (concatMap f allSpaces) where
-  f from = map (\(to,d) -> ((from,to),d)) (spaceMapFrom from)
+instance Show (HouseF Square) where
+  show = showHouse
 
-layoutLook :: I2 -> Layout -> Slot
-layoutLook (I2 0 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = a
-layoutLook (I2 1 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = b
-layoutLook (I2 3 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = c
-layoutLook (I2 5 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = d
-layoutLook (I2 7 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = e
-layoutLook (I2 9 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = f
-layoutLook (I2 10 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = g
-layoutLook (I2 2 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r0
-layoutLook (I2 2 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r1
-layoutLook (I2 4 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r2
-layoutLook (I2 4 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r3
-layoutLook (I2 6 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r4
-layoutLook (I2 6 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r5
-layoutLook (I2 8 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r6
-layoutLook (I2 8 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = r7
+showLevel :: Quad Square -> String
+showLevel (Q a b c d) = show a ++ "#" ++ show b ++ "#" ++ show c ++ "#" ++ show d
 
-layoutMod h (I2 0 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L (h a) b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g)
+parseColumn :: String -> Quad Square
+parseColumn [a,b,c,d] = Q (f a) (f b) (f c) (f d) where
+  f = parseSquare
 
-layoutMod h (I2 1 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a (h b) (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g)
+parseHall :: String -> Vector Square
+parseHall = V.fromList . map parseSquare 
 
-layoutMod h (I2 3 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 r1) (h c) (R r2 r3) d (R r4 r5) e (R r6 r7) f g)
+showHall :: Vector Square -> String
+showHall = concatMap show . V.toList
 
-layoutMod h (I2 5 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 r1) c (R r2 r3) (h d) (R r4 r5) e (R r6 r7) f g)
+showHouse :: House -> String
+showHouse (H hall (Q a b c d)) = unlines [roof,x,floor,lvl2,lvl3,lvl4,foundation] where
+  roof =          "#############"
+  x =             "#" ++ showHall hall++"#"
+  floor = concat ["###", showLevel a, "###"]
+  lvl2  = concat ["  #", showLevel b, "#"]
+  lvl3  = concat ["  #", showLevel c, "#"]
+  lvl4  = concat ["  #", showLevel d, "#"]
+  foundation =    "  #########"
 
-layoutMod h (I2 7 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) (h e) (R r6 r7) f g)
+readQuad :: Int -> Quad a -> a
+readQuad 0 (Q x _ _ _) = x
+readQuad 1 (Q _ x _ _) = x
+readQuad 2 (Q _ _ x _) = x
+readQuad 3 (Q _ _ _ x) = x
 
-layoutMod h (I2 9 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) (h f) g)
+modQuad :: Int -> (a -> a) -> Quad a -> Quad a
+modQuad 0 f (Q a b c d) = Q (f a) b c d
+modQuad 1 f (Q a b c d) = Q a (f b) c d
+modQuad 2 f (Q a b c d) = Q a b (f c) d
+modQuad 3 f (Q a b c d) = Q a b c (f d)
 
-layoutMod h (I2 10 0) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f (h g))
+readHouse :: I2 -> HouseF a -> a 
+readHouse (I2 i 0) (H hall rooms) = hall ! i
+readHouse (I2 i j) (H hall rooms) = (readQuad ((i-2) `div` 2) . readQuad (j-1)) rooms
 
-layoutMod h (I2 2 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R (h r0) r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g)
+modHall :: (Vector a -> Vector a) -> HouseF a -> HouseF a
+modHall f (H hall rooms) = H (f hall) rooms
 
-layoutMod h (I2 2 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  (L a b (R r0 (h r1)) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g)
+modRooms :: (Quad (Quad a) -> Quad (Quad a)) -> HouseF a -> HouseF a
+modRooms f (H hall rooms) = H hall (f rooms)
 
-layoutMod h (I2 4 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R (h r2) r3) d (R r4 r5) e (R r6 r7) f g)
+modColumn :: Piece -> (Quad a -> Quad a) -> HouseF a -> HouseF a
+modColumn PA f = modRooms (modQuad 0 f)
+modColumn PB f = modRooms (modQuad 1 f)
+modColumn PC f = modRooms (modQuad 2 f)
+modColumn PD f = modRooms (modQuad 3 f)
 
-layoutMod h (I2 4 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R r2 (h r3)) d (R r4 r5) e (R r6 r7) f g)
-
-layoutMod h (I2 6 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R r2 r3) d (R (h r4) r5) e (R r6 r7) f g)
-
-layoutMod h (I2 6 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 (h r5)) e (R r6 r7) f g)
-
-layoutMod h (I2 8 1) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R (h r6) r7) f g)
-
-layoutMod h (I2 8 2) (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) = 
-  (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 (h r7)) f g)
+instance Num I2 where
+  I2 a b + I2 c d = I2 (a + c) (b + d)
+  negate _ = error "negate"
+  (*) = error "*"
+  signum = error "signum"
+  abs = error "signum"
+  fromInteger = error "fromInteger"
 
 
+links :: I2 -> [I2]
+links here@(I2 i j) = look where
+  tee x = map (x+) [I2 0 1, I2 1 0, I2 (-1) 0]
+  eye x = map (x+) [I2 0 1, I2 0 (-1)]
+  dash x = map (x+) [I2 1 0, I2 (-1) 0]
+  endl x = [x + I2 1 0]
+  endr x = [x + I2 (-1) 0]
+  bottom x = [x + I2 0 (-1)]
+  look | j==0 && (i==2 || i==4 || i==6 || i==8) = tee here
+       | j>0 && j<4 = eye here
+       | j==4 = bottom here
+       | i==0 = endl here
+       | i==10 = endr here
+       | otherwise = dash here
 
-layoutToList :: Layout -> [(I2,Slot)]
-layoutToList (L a b (R r0 r1) c (R r2 r3) d (R r4 r5) e (R r6 r7) f g) =
-  [(I2 0 0, a)
-  ,(I2 1 0, b)
-  ,(I2 3 0, c)
-  ,(I2 5 0, d)
-  ,(I2 7 0, e)
-  ,(I2 9 0, f)
-  ,(I2 10 0, g)
-  ,(I2 2 1, r0)
-  ,(I2 2 2, r1)
-  ,(I2 4 1, r2)
-  ,(I2 4 2, r3)
-  ,(I2 6 1, r4)
-  ,(I2 6 2, r5)
-  ,(I2 8 1, r6)
-  ,(I2 8 2, r7)]
+walk :: I2 -> I2 -> [I2]
+walk x y = delete x (links y)
 
-moveXtoY :: I2 -> I2 -> Layout -> Layout
-moveXtoY x y layout =
-  let p = layoutLook x layout
-  in (layoutMod (const O) x . layoutMod (const p) y) layout
+data Tree a = Tree a [Tree a] deriving (Show,Functor,Foldable)
 
-isPiece :: Slot -> Bool
-isPiece O = False
-isPiece _ = True
+houseTree :: I2 -> HouseF a -> Tree (I2,a)
+houseTree start house = go start (links start) where
+  go here exits = Tree (here, readHouse here house) (map f exits) where
+    f next = go next (walk here next)
 
-pieceShouldBeAt :: Slot -> I2
-pieceShouldBeAt A = I2 2 1
-pieceShouldBeAt B = I2 4 1
-pieceShouldBeAt C = I2 6 1
-pieceShouldBeAt D = I2 8 1
+measureTree n (Tree (x,_) trees) = Tree (x,n) (map (measureTree (n+1)) trees)
 
-estimateCost :: SpaceTable -> (I2,Slot) -> Int
-estimateCost st (I2 2 2, A) = 0
-estimateCost st (I2 4 2, B) = 0
-estimateCost st (I2 6 2, C) = 0
-estimateCost st (I2 8 2, D) = 0
-estimateCost st (x,p) =
-  let y = pieceShouldBeAt p
-      d = st ! (x,y)
-  in d * cost p
+allSpaces :: [I2]
+allSpaces = go (I2 0 0) (links (I2 0 0)) where
+  go here exits = here : concatMap (\e -> go e (walk here e)) exits
 
-pieceLocations :: Layout -> [(I2,Slot)]
-pieceLocations = filter (isPiece . snd) . layoutToList
+type DTable = Map (I2,I2) Int
 
-pieceMovesCost :: SpaceTable -> Layout -> I2 -> [(I2,Int)]
-pieceMovesCost st layout x =
-  let p = layoutLook x layout -- assume piece
-      ys = filter (\y -> validDest y p) $ unblocked x layout
-  in map (\y -> (y, cost p * (st ! (x,y)))) ys
+distanceTable :: DTable
+distanceTable = M.fromList (concatMap f allSpaces) where
+  f start = map g $ toList (measureTree 0 (houseTree start pzl)) where
+    g (y,d) = ((start,y),d)
 
+data Column = Mixed | Ready | Complete deriving Show
 
-foo :: SpaceTable -> Layout -> [(Layout,Int)]
-foo st layout = concatMap f (pieceLocations layout) where
-  f (x,p) = map g (pieceMovesCost st layout x) where
-    g (y,w) = (moveXtoY x y layout, w)
+columnStatus :: Piece -> [Piece] -> Column
+columnStatus p ps =
+  if all (==p) ps
+    then if length ps < 4
+      then Ready
+      else Complete
+    else Mixed
+
+data Move =
+  C2F Piece Int | -- column label, free space number (0,1,3,5,7,9,10)
+  C2C Piece Piece | -- column, column
+  F2C Int Piece -- free space number, destination column
+    deriving Show
+
+popCol :: Piece -> Quad [Piece] -> (Piece, Quad [Piece])
+popCol PA (Q a b c d) = (head a, Q (tail a) b c d)
+popCol PB (Q a b c d) = (head b, Q a (tail b) c d)
+popCol PC (Q a b c d) = (head c, Q a b (tail c) d)
+popCol PD (Q a b c d) = (head d, Q a b c (tail d))
+
+pushCol :: Piece -> Piece -> Quad [Piece] -> Quad [Piece]
+pushCol PA p (Q a b c d) = Q (p : a) b c d
+pushCol PB p (Q a b c d) = Q a (p : b) c d
+pushCol PC p (Q a b c d) = Q a b (p : c) d
+pushCol PD p (Q a b c d) = Q a b c (p : d)
 
 
--- Astar stuff
+colY0 :: [Piece] -> Int
+colY0 [] = 4
+colY0 [a] = 3
+colY0 [a,b] = 2
+colY0 [a,b,c] = 1
+colY0 [a,b,c,d] = error "colY0 on full room"
 
-type Node = Layout
---type Grid = Map (Int,Int) Int
-type OpenSet = Set Node
-type FScore = Map Node Int
-type GScore = Map Node Int
-type CameFrom = Map Node Node
-type Path = [Node]
-type Neighbors = [Node]
+colY1 :: [Piece] -> Int
+colY1 [] = error "colY1 on empty room"
+colY1 [a] = 4
+colY1 [a,b] = 3
+colY1 [a,b,c] = 2
+colY1 [a,b,c,d] = 1
 
-type Move = (Node,Int)
+fp PA = A
+fp PB = B
+fp PC = C
+fp PD = D
+tp A = PA
+tp B = PB
+tp C = PC
+tp D = PD
 
-theHFunction :: SpaceTable -> Layout -> Int
-theHFunction st = sum . map (estimateCost st) . filter (isPiece . snd) . layoutToList
 
-go :: SpaceTable -> OpenSet -> CameFrom -> GScore -> FScore -> Path
-go st os cameFrom gscore fscore = if S.null os
-  then error "open set is empty"
-  else
-    let current = getCurrent os fscore in
-    if current == win
-      then reconstructPath cameFrom current
-      else
-        let os' = S.delete current os in
-        let neighbors = getNeighbors st current in
-        go2 st os' cameFrom gscore fscore current neighbors
+-- function to check for hall blockage
 
-go2 :: SpaceTable -> OpenSet -> CameFrom -> GScore -> FScore -> Node -> [Move] -> Path
-go2 st os cameFrom gscore fscore current [] = go st os cameFrom gscore fscore
-go2 st os cameFrom gscore fscore current ((n,w):ns) =
-  let tentativeG = getG gscore current + w in
-  if tentativeG < getG gscore n
-    then
-      let cameFrom' = M.insert n current cameFrom in
-      let gscore' = M.insert n tentativeG gscore in
-      let fscore' = M.insert n (tentativeG + theHFunction st n) fscore in
-      let os' = S.insert n os in
-      go2 st os' cameFrom' gscore' fscore' current ns
-    else go2 st os cameFrom gscore fscore current ns
+hallClear :: Int -> Int -> Hall -> Bool
+hallClear a b hall =
+  let c = min a b
+      d = max a b
+  in V.all (==O) (V.slice c (d-c+1) hall)
 
-reconstructPath :: CameFrom -> Node -> Path
-reconstructPath cameFrom end = go [] end where
-  go path xy = case M.lookup xy cameFrom of
-    Nothing  -> path
-    Just xy' -> go (xy:path) xy'
+putInHall :: Int -> Piece -> Hall -> Hall
+putInHall i p hall = hall // [(i,fp p)]
 
-getCurrent :: OpenSet -> FScore -> Node
-getCurrent os fscore = z where
-  g xy = case M.lookup xy fscore of
-    Nothing -> error "1"
-    Just n  -> (xy, n)
-  (z,_) = head $ sortBy (comparing snd) (map g (S.toList os))
+colX :: Piece -> Int
+colX PA = 2
+colX PB = 4
+colX PC = 6
+colX PD = 8
 
-getNeighbors :: SpaceTable -> Node -> [Move]
-getNeighbors st layout = foo st layout
+freeIs = [0,1,3,5,7,9,10]
 
-getG :: GScore -> Node -> Int
-getG gscore xy = case M.lookup xy gscore of
-  Nothing -> maxBound
-  Just s  -> s
+free2colClear p i =
+  let target = colX p
+  in if target < i
+    then hallClear target (i-1)
+    else hallClear (i+1) target
+
+col2freeClear p i = hallClear (colX p) i
+
+col2colClear p1 p2 = hallClear (colX p1) (colX p2)
+
+genC2CMove :: Piece -> Column -> Piece -> Column -> Hall -> [Move]
+genC2CMove c1 Mixed c2 Ready hall = if col2colClear c1 c2 hall then [C2C c1 c2] else []
+genC2CMove _ _ _ _ _ = []
+
+genF2CMove :: Piece -> Int -> Column -> Hall -> [Move]
+genF2CMove p i Ready hall = if free2colClear p i hall then [F2C i p] else []
+genF2CMove p i _     hall = []
+
+colStatusByP :: Piece -> Quad [Piece] -> Column
+colStatusByP PA (Q a b c d) = columnStatus PA a
+colStatusByP PB (Q a b c d) = columnStatus PB b
+colStatusByP PC (Q a b c d) = columnStatus PC c
+colStatusByP PD (Q a b c d) = columnStatus PD d
+
+
+movesF2C :: Quad [Piece] -> Hall -> [Move]
+movesF2C cols@(Q a b c d) hall = concatMap f freeIs where
+  f i = case hall ! i of
+    O -> []
+    s -> let p = tp s
+             status = colStatusByP p cols
+         in genF2CMove p i status hall
+
+movesC2F :: Piece -> [Piece] -> Hall -> [Move]
+movesC2F c stack hall = case columnStatus c stack of
+  Mixed -> concatMap f freeIs where
+    f i = if col2freeClear c i hall then [C2F c i] else []
+  _ -> []
+
+movesC2C :: Piece -> [Piece] -> Quad [Piece] -> Hall -> [Move]
+movesC2C c stack cols hall = case columnStatus c stack of
+  Mixed -> let p = head stack in
+           case colStatusByP p cols of
+             Ready -> if col2colClear c p hall then [C2C c p] else []
+             Complete -> error "movesC2C"
+             _ -> []
+  _ -> []
+
+pzl' = (Q [PA,PD,PD,PD] [PC,PC,PB,PD] [PB,PB,PA,PB] [PA,PA,PC,PC], parseHall "...........")
+
+moves :: (Quad [Piece], Hall) -> [Move]
+moves (cols@(Q a b c d),hall) = concat
+  [movesC2F PA a hall
+  ,movesC2F PB b hall
+  ,movesC2F PC c hall
+  ,movesC2F PD d hall
+  ,movesC2C PA a cols hall
+  ,movesC2C PB b cols hall
+  ,movesC2C PC c cols hall
+  ,movesC2C PD d cols hall
+  ,movesF2C cols hall]
+
+
+applyMove :: (Quad [Piece],Hall) -> Move -> (Quad [Piece], Hall)
+applyMove (cols@(Q a b c d),hall) move = case move of
+  C2F c i -> let (p,cols') = popCol c cols in (cols', putInHall i p hall)
+  C2C c1 c2 -> let (p,cols') = popCol c1 cols in (pushCol c2 p cols', hall)
+  F2C i c -> let p = tp (hall ! i)
+                 hall' = hall // [(i,O)]
+             in (pushCol c p cols, hall')
+
+won :: S -> Bool
+won (Q [PA,PA,PA,PA] [PB,PB,PB,PB] [PC,PC,PC,PC] [PD,PD,PD,PD], _) = True
+won _ = False
+  
+type S = (Quad [Piece], Hall)
+
+stackToQuad [] = Q O O O O
+stackToQuad [a] = Q O O O a
+stackToQuad [a,b] = Q O O a b
+stackToQuad [a,b,c] = Q O a b c
+stackToQuad [a,b,c,d] = Q a b c d
+
+padStack [] = [O,O,O,O]
+padStack [a] = [O,O,O,fp a]
+padStack [a,b] = [O,O,fp a,fp b]
+padStack [a,b,c] = [O,fp a,fp b,fp c]
+padStack [a,b,c,d] = [fp a, fp b, fp c, fp d]
+
+conv :: S -> House
+conv (Q a b c d, hall) =
+  let cols = map padStack [a,b,c,d]
+      [x,y,z,w] = transpose cols
+  in H hall (Q (stackToQuad x) (stackToQuad y) (stackToQuad z) (stackToQuad w))
+
+fun :: S -> IO ()
+fun s = case moves s of
+  [] -> putStrLn "no more moves"
+  (m:_) -> do
+    let s' = applyMove s m
+    let h = conv s'
+    print h
+    fun s'
+
+getCol :: Piece -> Quad [Piece] -> [Piece]
+getCol PA (Q a b c d) = a
+getCol PB (Q a b c d) = b
+getCol PC (Q a b c d) = c
+getCol PD (Q a b c d) = d
+
+moveDist :: DTable -> S -> Move -> Int
+moveDist dt (cols,_) (C2C c1 c2) =
+  let p1 = I2 (colX c1) (colY1 (getCol c1 cols))
+      p2 = I2 (colX c2) (colY0 (getCol c2 cols))
+  in dt M.! (p1,p2)
+moveDist dt (cols,_) (C2F c i) =
+  let p1 = I2 (colX c) (colY1 (getCol c cols))
+      p2 = I2 i 0
+  in dt M.! (p1,p2)
+moveDist dt (cols,_) (F2C i c) =
+  let p1 = I2 i 0
+      p2 = I2 (colX c) (colY0 (getCol c cols))
+  in dt M.! (p1,p2)
+
+moveCost :: DTable -> S -> Move -> Int
+moveCost dt s@(cols,hall) move = pieceCost p * moveDist dt s move where
+  p = case move of
+    C2F c _ -> head (getCol c cols)
+    C2C c1 c2 -> head (getCol c1 cols)
+    F2C i _ -> tp (hall ! i)
+    
+
+pieceCost PA = 1
+pieceCost PB = 10
+pieceCost PC = 100
+pieceCost PD = 1000
+
+minCost :: Int -> DTable -> S -> Maybe Int
+minCost 0 dt s = Nothing
+minCost n dt s =
+  let f m = fmap (+ moveCost dt s m) (minCost (n-1) dt (applyMove s m))
+  in if won s
+    then Just 0
+    else case catMaybes (map f (moves s)) of
+      [] -> Nothing
+      costs -> let x = minimum costs in traceShow x (Just x)
+
+main :: IO ()
+main = do
+  let dt = distanceTable
+  let s = pzl'
+  let answer = minCost 30 dt s
+  print answer
+    
+
